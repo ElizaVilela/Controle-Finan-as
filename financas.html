@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle Financeiro Mensal</title>
+    <!-- Carrega o Tailwind CSS para um layout moderno -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font and basic setup */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        /* Style for the Save button hover effect */
+        .btn-action-primary:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+            transform: translateY(-1px);
+        }
+        /* Style for the action buttons */
+        .btn-action {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            line-height: 1.25rem;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 flex flex-col md:flex-row md:items-end justify-between">
+            <div>
+                <h1 class="text-4xl font-extrabold text-gray-800 mb-2">Controle Financeiro</h1>
+                <p class="text-gray-500 text-lg">Planejamento de <span id="planning-date-display" class="font-semibold text-indigo-600">Carregando...</span></p>
+            </div>
+            
+            <div class="mt-4 md:mt-0">
+                <label for="planning-month" class="block text-sm font-medium text-gray-700">Mês/Ano do Planejamento:</label>
+                <!-- O input type="month" seleciona Mês e Ano -->
+                <input 
+                    type="month" 
+                    id="planning-month" 
+                    onchange="updateDateAndLoad(this.value)"
+                    class="mt-1 block w-full md:w-auto rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border bg-white font-mono"
+                    value="2025-01" 
+                >
+            </div>
+        </header>
+
+        <!-- DASHBOARD DE RESUMO -->
+        <div id="summary-dashboard" class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <!-- Total Entradas -->
+            <div class="bg-white p-4 rounded-xl shadow-lg border-l-4 border-green-500">
+                <p class="text-sm font-medium text-gray-500">Total de Entradas</p>
+                <p id="total-revenues" class="text-xl font-bold text-green-600 mt-1">R$ 0,00</p>
+            </div>
+            <!-- Total Saídas -->
+            <div class="bg-white p-4 rounded-xl shadow-lg border-l-4 border-red-500">
+                <p class="text-sm font-medium text-gray-500">Total de Saídas</p>
+                <p id="total-expenses" class="text-xl font-bold text-red-600 mt-1">R$ 0,00</p>
+            </div>
+            <!-- Despesas Pagas -->
+            <div class="bg-white p-4 rounded-xl shadow-lg border-l-4 border-blue-500">
+                <p class="text-sm font-medium text-gray-500">Despesas Pagas</p>
+                <p id="paid-expenses" class="text-xl font-bold text-blue-600 mt-1">R$ 0,00</p>
+            </div>
+            <!-- Falta Pagar -->
+            <div class="bg-white p-4 rounded-xl shadow-lg border-l-4 border-yellow-500">
+                <p class="text-sm font-medium text-gray-500">Falta Pagar</p>
+                <p id="remaining-expenses" class="text-xl font-bold text-yellow-600 mt-1">R$ 0,00</p>
+            </div>
+            <!-- Saldo Total -->
+            <div class="bg-white p-4 rounded-xl shadow-lg col-span-2 lg:col-span-1 border-l-4" id="balance-card">
+                <p class="text-sm font-medium text-gray-500">Saldo Total</p>
+                <p id="total-balance" class="text-2xl font-extrabold mt-1">R$ 0,00</p>
+            </div>
+        </div>
+        
+        <!-- Status e ID do Usuário -->
+        <div class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center p-3 bg-gray-100 rounded-lg shadow-inner">
+            <p id="system-status" class="text-sm text-gray-600 font-medium"></p>
+            <p class="text-xs text-gray-500 mt-2 md:mt-0">ID do Usuário: <span id="user-id-display" class="font-mono text-gray-700">Carregando...</span></p>
+        </div>
+
+        <!-- BOTÕES DE AÇÃO -->
+        <div class="flex flex-col md:flex-row space-y-3 md:space-y-0 md:space-x-4 mb-8">
+            <button onclick="showModal('expense')" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 btn-action-primary">
+                + Adicionar Despesa
+            </button>
+            <button onclick="showModal('revenue')" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 btn-action-primary">
+                + Adicionar Receita
+            </button>
+            <button onclick="saveDataToFirestore()" class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 btn-action-primary">
+                💾 Salvar Registros
+            </button>
+            <button onclick="loadDataFromFirestore(true)" class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 btn-action-primary">
+                🔄 Restaurar Registros
+            </button>
+            <button onclick="exportToCSV()" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 btn-action-primary">
+                📥 Salvar Cópia (CSV/Excel)
+            </button>
+        </div>
+
+        <!-- TABELAS DE DADOS -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Despesas (Saídas) -->
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-bold text-red-600 mb-4 border-b pb-2">Despesas (Saídas)</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-red-50">
+                            <tr>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Despesa</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vencimento</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data Pg.</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expenses-table-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Data will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Receitas (Entradas) -->
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-bold text-green-600 mb-4 border-b pb-2">Receitas (Entradas)</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-green-50">
+                            <tr>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Receita</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="revenues-table-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Data will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL (Formulário de Adição/Edição) -->
+    <div id="data-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg m-4">
+            <h3 id="modal-title" class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Adicionar Novo Registro</h3>
+            <form id="data-form">
+                <input type="hidden" id="record-id">
+                <input type="hidden" id="record-type">
+
+                <div class="mb-4">
+                    <label for="description" class="block text-sm font-medium text-gray-700">Descrição/Nome</label>
+                    <input type="text" id="description" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                </div>
+
+                <div class="mb-4">
+                    <label for="value" class="block text-sm font-medium text-gray-700">Valor (R$)</label>
+                    <input type="number" id="value" step="0.01" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                </div>
+                
+                <!-- Campos específicos para Despesa -->
+                <div id="expense-fields" class="hidden">
+                    <div class="mb-4">
+                        <label for="due-date" class="block text-sm font-medium text-gray-700">Data de Vencimento</label>
+                        <input type="date" id="due-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                    </div>
+                    <div class="mb-4">
+                        <label for="payment-date" class="block text-sm font-medium text-gray-700">Data de Pagamento (Opcional)</label>
+                        <input type="date" id="payment-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="hideModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition duration-150">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition duration-150">
+                        Salvar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase variables
+        let app;
+        let db;
+        let auth;
+        let userId = 'loading'; 
+        let isAuthReady = false; 
+
+        // Variável de controle do Mês/Ano de Planejamento (YYYY-MM)
+        let planningMonthYear = '2025-01'; // Default: Janeiro de 2025
+        
+        // Mandatorily provided configuration globals
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Variáveis globais para armazenar os dados e o próximo ID
+        let financeData = {
+            // Dados iniciais (serão sobrescritos pelo Firestore se houver dados salvos)
+            expenses: [
+                { id: 1, description: "Luz", dueDate: "2025-01-08", value: 450.00, paymentDate: "2025-01-06" },
+                { id: 2, description: "Água", dueDate: "2025-01-15", value: 350.00, paymentDate: "" },
+                { id: 3, description: "Internet", dueDate: "2025-01-15", value: 99.90, paymentDate: "" },
+            ],
+            revenues: [
+                { id: 4, description: "Salário", value: 5900.00 },
+                { id: 5, description: "Outros", value: 600.00 },
+            ],
+            nextId: 6, // Próximo ID a ser usado
+        };
+        
+        // --- FUNÇÕES DE UTILIDADE ---
+        
+        /**
+         * Converte YYYY-MM para o formato de exibição (ex: Janeiro/2025)
+         * @param {string} isoMonth YYYY-MM
+         * @returns {string} Mês/AAAA
+         */
+        function formatMonthYear(isoMonth) {
+            const [year, month] = isoMonth.split('-');
+            const date = new Date(year, month - 1, 1);
+            const options = { month: 'long', year: 'numeric' };
+            const formatted = date.toLocaleDateString('pt-BR', options);
+            // Capitaliza o mês e formata como "Mês de AAAA" ou "Mês/AAAA"
+            return formatted.charAt(0).toUpperCase() + formatted.slice(1).replace(' de ', '/');
+        }
+
+        /**
+         * Atualiza o estado global de mês/ano e dispara o carregamento de dados.
+         * @param {string} newMonthYear Novo valor YYYY-MM do input.
+         */
+        function updateDateAndLoad(newMonthYear) {
+            if (newMonthYear === planningMonthYear) return;
+            
+            // 1. Atualiza a variável global
+            planningMonthYear = newMonthYear; 
+            
+            // 2. Atualiza o display no cabeçalho
+            document.getElementById('planning-date-display').textContent = formatMonthYear(planningMonthYear);
+            
+            // 3. Reseta os dados locais para forçar o carregamento do novo mês
+            financeData = { expenses: [], revenues: [], nextId: 1 };
+            updateUI(); // Limpa a tela
+            
+            // 4. Carrega os dados para o novo mês/ano (se houver)
+            loadDataFromFirestore();
+        }
+
+        /**
+         * Define o mês atual como padrão e inicializa o input.
+         */
+        function initializeMonthYear() {
+            const today = new Date();
+            // Formato YYYY-MM
+            const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            
+            // Define o mês inicial
+            planningMonthYear = defaultMonth;
+            
+            // Define o valor do input
+            const monthInput = document.getElementById('planning-month');
+            monthInput.value = defaultMonth;
+            
+            // Atualiza o display inicial
+            document.getElementById('planning-date-display').textContent = formatMonthYear(planningMonthYear);
+        }
+
+        /**
+         * Exibe uma mensagem de status temporária na interface.
+         * @param {string} message A mensagem a ser exibida.
+         * @param {string} type O tipo de mensagem ('success', 'error', 'info').
+         */
+        function setStatusMessage(message, type = 'info') {
+            const statusElement = document.getElementById('system-status');
+            statusElement.textContent = message;
+            
+            // Remove classes antigas e adiciona a nova
+            statusElement.classList.remove('text-green-600', 'text-red-600', 'text-gray-600');
+            if (type === 'success') {
+                statusElement.classList.add('text-green-600');
+            } else if (type === 'error') {
+                statusElement.classList.add('text-red-600');
+            } else {
+                statusElement.classList.add('text-gray-600');
+            }
+
+            // Oculta após 5 segundos
+            setTimeout(() => {
+                if (statusElement.textContent === message) {
+                    statusElement.textContent = '';
+                }
+            }, 5000);
+        }
+
+        /**
+         * Formata um número para o padrão de moeda Brasileira (R$).
+         * @param {number} value O valor a ser formatado.
+         * @returns {string} O valor formatado como string.
+         */
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+
+        /**
+         * Converte uma data ISO (YYYY-MM-DD) para o formato DD/MM/AAAA para exibição.
+         * Se a data for vazia ou inválida, retorna uma string vazia.
+         * @param {string} isoDateString A data no formato YYYY-MM-DD.
+         * @returns {string} A data no formato DD/MM/AAAA.
+         */
+        function formatDate(isoDateString) {
+            if (!isoDateString) return '';
+            const parts = isoDateString.split('-'); // [YYYY, MM, DD]
+            if (parts.length === 3) {
+                // Inverte para [DD, MM, YYYY] e junta com '/'
+                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+            return isoDateString; // Retorna o original se o formato for inesperado
+        }
+
+        /**
+         * Calcula todos os totais e saldos com base nos dados atuais.
+         */
+        function calculateSummary() {
+            const totalRevenues = financeData.revenues.reduce((sum, item) => sum + item.value, 0);
+            const totalExpenses = financeData.expenses.reduce((sum, item) => sum + item.value, 0);
+            
+            const paidExpenses = financeData.expenses
+                .filter(item => item.paymentDate && item.paymentDate !== '')
+                .reduce((sum, item) => sum + item.value, 0);
+                
+            const remainingExpenses = totalExpenses - paidExpenses;
+            const totalBalance = totalRevenues - totalExpenses;
+
+            // Atualiza o Dashboard (UI)
+            document.getElementById('total-revenues').textContent = formatCurrency(totalRevenues);
+            document.getElementById('total-expenses').textContent = formatCurrency(totalExpenses);
+            document.getElementById('paid-expenses').textContent = formatCurrency(paidExpenses);
+            document.getElementById('remaining-expenses').textContent = formatCurrency(remainingExpenses);
+            document.getElementById('total-balance').textContent = formatCurrency(totalBalance);
+            
+            // Estiliza o card do Saldo Total com base no valor
+            const balanceCard = document.getElementById('balance-card');
+            balanceCard.classList.remove('border-green-500', 'border-red-500', 'border-gray-500');
+            document.getElementById('total-balance').classList.remove('text-green-600', 'text-red-600', 'text-gray-600');
+
+            if (totalBalance > 0) {
+                balanceCard.classList.add('border-green-500');
+                document.getElementById('total-balance').classList.add('text-green-600');
+            } else if (totalBalance < 0) {
+                balanceCard.classList.add('border-red-500');
+                document.getElementById('total-balance').classList.add('text-red-600');
+            } else {
+                balanceCard.classList.add('border-gray-500');
+                document.getElementById('total-balance').classList.add('text-gray-600');
+            }
+        }
+
+        /**
+         * Renderiza as linhas da tabela de despesas.
+         */
+        function renderExpenses() {
+            const tableBody = document.getElementById('expenses-table-body');
+            tableBody.innerHTML = ''; // Limpa a tabela
+            
+            financeData.expenses.forEach(item => {
+                const isPaid = item.paymentDate && item.paymentDate !== '';
+                const row = tableBody.insertRow();
+                // Alterna a cor de fundo baseado no status de pagamento
+                row.classList.add('hover:bg-gray-50', isPaid ? 'bg-green-50' : 'bg-red-50');
+
+                // Célula Despesa
+                row.insertCell().textContent = item.description;
+                // Célula Vencimento (Formato DD/MM/AAAA)
+                row.insertCell().textContent = formatDate(item.dueDate);
+                // Célula Valor
+                const valueCell = row.insertCell();
+                valueCell.textContent = formatCurrency(item.value);
+                valueCell.classList.add('font-semibold', 'text-red-500');
+                // Célula Data Pagamento (Formato DD/MM/AAAA)
+                const paymentCell = row.insertCell();
+                paymentCell.textContent = isPaid ? formatDate(item.paymentDate) : 'Aberto';
+                paymentCell.classList.add(isPaid ? 'text-green-600' : 'text-yellow-600', 'font-medium');
+                
+                // Célula Ações
+                const actionsCell = row.insertCell();
+                actionsCell.classList.add('flex', 'space-x-1');
+
+                // Botão Editar
+                const editBtn = document.createElement('button');
+                editBtn.textContent = 'Editar';
+                editBtn.classList.add('btn-action', 'text-blue-600', 'hover:text-blue-800');
+                editBtn.onclick = () => showModal('expense', item.id);
+
+                // Botão Excluir
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Excluir';
+                deleteBtn.classList.add('btn-action', 'text-red-600', 'hover:text-red-800');
+                deleteBtn.onclick = () => deleteRecord('expense', item.id, item.description);
+
+                actionsCell.appendChild(editBtn);
+                actionsCell.appendChild(deleteBtn);
+            });
+        }
+
+        /**
+         * Renderiza as linhas da tabela de receitas.
+         */
+        function renderRevenues() {
+            const tableBody = document.getElementById('revenues-table-body');
+            tableBody.innerHTML = ''; // Limpa a tabela
+            
+            financeData.revenues.forEach(item => {
+                const row = tableBody.insertRow();
+                row.classList.add('hover:bg-gray-50');
+
+                // Célula Receita
+                row.insertCell().textContent = item.description;
+                // Célula Valor
+                const valueCell = row.insertCell();
+                valueCell.textContent = formatCurrency(item.value);
+                valueCell.classList.add('font-semibold', 'text-green-500');
+                
+                // Célula Ações
+                const actionsCell = row.insertCell();
+                actionsCell.classList.add('flex', 'space-x-1');
+
+                // Botão Editar
+                const editBtn = document.createElement('button');
+                editBtn.textContent = 'Editar';
+                editBtn.classList.add('btn-action', 'text-blue-600', 'hover:text-blue-800');
+                editBtn.onclick = () => showModal('revenue', item.id);
+
+                // Botão Excluir
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Excluir';
+                deleteBtn.classList.add('btn-action', 'text-red-600', 'hover:text-red-800');
+                deleteBtn.onclick = () => deleteRecord('revenue', item.id, item.description);
+
+                actionsCell.appendChild(editBtn);
+                actionsCell.appendChild(deleteBtn);
+            });
+        }
+
+        /**
+         * Função principal que atualiza a interface completa.
+         */
+        function updateUI() {
+            renderExpenses();
+            renderRevenues();
+            calculateSummary();
+        }
+
+        // --- FUNÇÕES DE PERSISTÊNCIA (Firestore) ---
+        
+        // Caminho do documento de dados privado do usuário no Firestore
+        function getDocPath() {
+            // A chave de armazenamento agora inclui o MÊS/ANO
+            return `artifacts/${appId}/users/${userId}/financeData/${planningMonthYear}`;
+        }
+
+        /**
+         * Salva os dados atuais no Firestore.
+         */
+        async function saveDataToFirestore() {
+            if (!db || !isAuthReady) {
+                setStatusMessage('Aguardando inicialização do sistema...', 'error');
+                return;
+            }
+
+            setStatusMessage(`Salvando dados para ${formatMonthYear(planningMonthYear)}...`, 'info');
+            try {
+                // A chave doc é específica para o mês atual
+                const docRef = doc(db, getDocPath());
+                
+                // Garantir que o nextId está atualizado antes de salvar
+                const currentMaxId = Math.max(
+                    ...financeData.expenses.map(e => e.id),
+                    ...financeData.revenues.map(r => r.id),
+                    0 // Garante um valor base se os arrays estiverem vazios
+                );
+                financeData.nextId = currentMaxId + 1;
+
+                await setDoc(docRef, financeData);
+                setStatusMessage('Dados salvos com sucesso!', 'success');
+            } catch (error) {
+                console.error("Erro ao salvar dados no Firestore: ", error);
+                setStatusMessage(`Erro ao salvar: ${error.message}`, 'error');
+            }
+        }
+
+        /**
+         * Carrega os dados do Firestore.
+         * @param {boolean} isManual Indica se a carga foi acionada manualmente pelo botão "Restaurar".
+         */
+        async function loadDataFromFirestore(isManual = false) {
+            if (!db || !isAuthReady) {
+                if (isManual) {
+                    setStatusMessage('Aguarde: O sistema de banco de dados ainda está inicializando.', 'error');
+                }
+                return;
+            }
+
+            if (isManual) {
+                setStatusMessage(`Restaurando dados para ${formatMonthYear(planningMonthYear)}...`, 'info');
+            } else {
+                setStatusMessage(`Carregando dados para ${formatMonthYear(planningMonthYear)}...`, 'info');
+            }
+
+            try {
+                // A chave doc é específica para o mês atual
+                const docRef = doc(db, getDocPath());
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const loadedData = docSnap.data();
+                    
+                    // Sobrescreve os dados locais com os dados do Firestore
+                    financeData = {
+                        expenses: loadedData.expenses || [],
+                        revenues: loadedData.revenues || [],
+                        nextId: loadedData.nextId || 1,
+                    };
+                    
+                    updateUI();
+
+                    if (isManual) {
+                        setStatusMessage('Dados restaurados com sucesso!', 'success');
+                    } else {
+                        setStatusMessage('Dados carregados do Firestore.', 'info');
+                    }
+                } else {
+                    // Se não houver dados no Firestore para este mês, usa os dados default apenas na inicialização,
+                    // mas para carregamento manual/troca de mês, apenas zera.
+                    if (!isManual) {
+                        // Se não for carregamento manual, e não houver dados, mantém os dados default (do topo)
+                        // Apenas se for o mês default. Se for outro mês, zera para começar do zero.
+                        const defaultMonth = document.getElementById('planning-month').value;
+                        if (planningMonthYear !== defaultMonth) {
+                             financeData = { expenses: [], revenues: [], nextId: 1 };
+                        }
+                    } else {
+                        // Se for restauração manual e não encontrar, apenas zera
+                        financeData = { expenses: [], revenues: [], nextId: 1 };
+                        setStatusMessage(`Nenhum registro de backup encontrado para ${formatMonthYear(planningMonthYear)}.`, 'error');
+                    }
+                    updateUI();
+                }
+            } catch (error) {
+                console.error("Erro ao carregar dados do Firestore: ", error);
+                setStatusMessage('Erro ao carregar dados. Verifique a conexão.', 'error');
+            }
+        }
+
+
+        // --- FUNÇÕES DE CRUD (Adicionar, Editar, Excluir) ---
+
+        /**
+         * Exibe o modal de formulário para adicionar ou editar um registro.
+         * @param {string} type 'expense' ou 'revenue'.
+         * @param {number} [id] ID do registro para edição. Se omitido, é uma adição.
+         */
+        function showModal(type, id = null) {
+            const modal = document.getElementById('data-modal');
+            const title = document.getElementById('modal-title');
+            const expenseFields = document.getElementById('expense-fields');
+            const form = document.getElementById('data-form');
+            form.reset(); // Limpa o formulário
+
+            // Configurações baseadas no tipo (Despesa ou Receita)
+            document.getElementById('record-type').value = type;
+
+            if (type === 'expense') {
+                expenseFields.classList.remove('hidden');
+                document.getElementById('due-date').setAttribute('required', 'required');
+            } else {
+                expenseFields.classList.add('hidden');
+                document.getElementById('due-date').removeAttribute('required');
+            }
+
+            if (id) {
+                // Modo Edição
+                document.getElementById('record-id').value = id;
+                title.textContent = (type === 'expense' ? 'Editar Despesa' : 'Editar Receita') + ` (ID: ${id})`;
+                
+                const data = type === 'expense' ? financeData.expenses : financeData.revenues;
+                const record = data.find(item => item.id === id);
+
+                if (record) {
+                    document.getElementById('description').value = record.description;
+                    document.getElementById('value').value = record.value;
+                    if (type === 'expense') {
+                        // Inputs de data usam o formato YYYY-MM-DD
+                        document.getElementById('due-date').value = record.dueDate || '';
+                        document.getElementById('payment-date').value = record.paymentDate || '';
+                    }
+                }
+            } else {
+                // Modo Adição
+                document.getElementById('record-id').value = '';
+                title.textContent = type === 'expense' ? 'Adicionar Nova Despesa' : 'Adicionar Nova Receita';
+            }
+
+            modal.style.display = 'flex'; // Exibe o modal
+        }
+
+        /**
+         * Oculta o modal de formulário.
+         */
+        function hideModal() {
+            document.getElementById('data-modal').style.display = 'none';
+        }
+        
+        /**
+         * Exclui um registro.
+         * @param {string} type 'expense' ou 'revenue'.
+         * @param {number} id ID do registro a ser excluído.
+         * @param {string} description Descrição para fins de log/mensagem.
+         */
+        function deleteRecord(type, id, description) {
+            setStatusMessage(`Tentando excluir: "${description}" (ID: ${id}).`, 'info');
+
+            if (type === 'expense') {
+                const initialLength = financeData.expenses.length;
+                financeData.expenses = financeData.expenses.filter(item => item.id !== id);
+                if (financeData.expenses.length < initialLength) {
+                    setStatusMessage(`Despesa "${description}" excluída. Salvando...`, 'success');
+                } else {
+                    setStatusMessage(`Erro ao excluir despesa "${description}".`, 'error');
+                }
+            } else if (type === 'revenue') {
+                const initialLength = financeData.revenues.length;
+                financeData.revenues = financeData.revenues.filter(item => item.id !== id);
+                 if (financeData.revenues.length < initialLength) {
+                    setStatusMessage(`Receita "${description}" excluída. Salvando...`, 'success');
+                } else {
+                    setStatusMessage(`Erro ao excluir receita "${description}".`, 'error');
+                }
+            }
+
+            updateUI();
+            saveDataToFirestore(); // Salva após exclusão
+        }
+
+        /**
+         * Lida com o envio do formulário (Adicionar/Editar).
+         * @param {Event} event O evento de submissão do formulário.
+         */
+        function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const id = document.getElementById('record-id').value;
+            const type = document.getElementById('record-type').value;
+            const description = document.getElementById('description').value;
+            const value = parseFloat(document.getElementById('value').value);
+            
+            const isEditing = !!id;
+
+            const newRecord = {
+                id: isEditing ? parseInt(id) : financeData.nextId,
+                description: description,
+                value: value,
+            };
+
+            if (type === 'expense') {
+                newRecord.dueDate = document.getElementById('due-date').value;
+                newRecord.paymentDate = document.getElementById('payment-date').value;
+                
+                if (isEditing) {
+                    const index = financeData.expenses.findIndex(item => item.id === newRecord.id);
+                    if (index > -1) {
+                        financeData.expenses[index] = newRecord;
+                    }
+                } else {
+                    financeData.expenses.push(newRecord);
+                    financeData.nextId++;
+                }
+            } else if (type === 'revenue') {
+                if (isEditing) {
+                    const index = financeData.revenues.findIndex(item => item.id === newRecord.id);
+                    if (index > -1) {
+                        financeData.revenues[index] = newRecord;
+                    }
+                } else {
+                    financeData.revenues.push(newRecord);
+                    financeData.nextId++;
+                }
+            }
+
+            hideModal();
+            updateUI();
+            saveDataToFirestore(); // Salva após adição/edição
+        }
+        
+        // --- FUNÇÃO DE EXPORTAÇÃO (CSV/Excel) ---
+
+        /**
+         * Cria e baixa um arquivo CSV com delimitador de ponto e vírgula (;) para melhor compatibilidade com Excel.
+         */
+        function exportToCSV() {
+            // Use ponto e vírgula (;) como delimitador para Excel brasileiro
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // \uFEFF é o Byte Order Mark para UTF-8
+
+            // Cabeçalhos
+            csvContent += `DADOS_PARA_O_MES_DE:${formatMonthYear(planningMonthYear)}\n`;
+            csvContent += "DESPESAS;VENCIMENTO;VALOR_DESPESA;DATA_PG;RECEITAS;VALOR_RECEITA\n";
+            
+            const maxRows = Math.max(financeData.expenses.length, financeData.revenues.length);
+            
+            for (let i = 0; i < maxRows; i++) {
+                let row = '';
+                
+                // Colunas de Despesas
+                const exp = financeData.expenses[i];
+                if (exp) {
+                    // Assegura que valores e datas formatadas corretamente
+                    const val = String(exp.value).replace('.', ','); // Troca ponto por vírgula para números
+                    row += `"${exp.description}";${exp.dueDate};${val};${exp.paymentDate || ''}`;
+                } else {
+                    row += ';;;'; // Colunas vazias
+                }
+                
+                row += ';'; // Separador entre Despesas e Receitas
+                
+                // Colunas de Receitas
+                const rev = financeData.revenues[i];
+                if (rev) {
+                    const val = String(rev.value).replace('.', ','); // Troca ponto por vírgula para números
+                    row += `"${rev.description}";${val}`;
+                } else {
+                    row += ''; // Colunas vazias
+                }
+                
+                csvContent += row + '\n';
+            }
+
+            // Cria o link e simula o clique para download
+            const link = document.createElement("a");
+            link.setAttribute("href", encodeURI(csvContent));
+            link.setAttribute("download", `controle_financeiro_${planningMonthYear}.csv`);
+            document.body.appendChild(link); 
+            link.click(); 
+            document.body.removeChild(link);
+            setStatusMessage('Dados exportados para CSV.', 'success');
+        }
+
+        // --- INICIALIZAÇÃO E AUTENTICAÇÃO FIREBASE ---
+
+        function initializeFirebase() {
+            if (!firebaseConfig) {
+                setStatusMessage('Erro: Configuração do Firebase ausente.', 'error');
+                return;
+            }
+
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Define a função de autenticação
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('user-id-display').textContent = userId;
+                        isAuthReady = true; // Autenticação concluída
+                        // Tenta carregar dados do Firestore após a autenticação
+                        loadDataFromFirestore(); 
+                    } else {
+                        isAuthReady = true; // Mesmo que anônimo, o processo terminou
+                        // Se não houver token inicial, faz login anônimo
+                        if (!initialAuthToken) {
+                            signInAnonymously(auth).catch(e => {
+                                console.error("Erro ao autenticar anonimamente:", e);
+                                setStatusMessage('Erro de autenticação.', 'error');
+                            });
+                        }
+                    }
+                });
+
+                // Tenta fazer login com o token fornecido
+                if (initialAuthToken) {
+                    signInWithCustomToken(auth, initialAuthToken).catch(e => {
+                        console.error("Erro ao autenticar com token customizado:", e);
+                        setStatusMessage('Erro de autenticação com token.', 'error');
+                    });
+                } else {
+                    // Inicia o processo de autenticação anônima se não houver token
+                    onAuthStateChanged(auth, (user) => {
+                        if (!user) {
+                             signInAnonymously(auth).catch(e => {
+                                console.error("Erro ao autenticar anonimamente:", e);
+                                setStatusMessage('Erro de autenticação.', 'error');
+                            });
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error("Erro ao inicializar Firebase:", e);
+                setStatusMessage(`Erro de inicialização: ${e.message}`, 'error');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Define o mês e ano atual como padrão e inicializa a variável global
+            initializeMonthYear();
+
+            // Adiciona o listener para o formulário
+            document.getElementById('data-form').addEventListener('submit', handleFormSubmit);
+
+            // Inicia o Firebase
+            initializeFirebase();
+
+            // Renderiza a UI inicial com dados default até que o Firestore carregue
+            updateUI();
+        });
+
+        // --- EXPOSIÇÃO GLOBAL ---
+        // Expor as funções necessárias para serem chamadas diretamente pelo HTML (onclick)
+        window.showModal = showModal;
+        window.hideModal = hideModal;
+        window.saveDataToFirestore = saveDataToFirestore;
+        window.loadDataFromFirestore = loadDataFromFirestore;
+        window.exportToCSV = exportToCSV;
+        window.deleteRecord = deleteRecord; 
+        window.updateDateAndLoad = updateDateAndLoad; // Nova função para troca de mês
+
+    </script>
+</body>
+</html>
